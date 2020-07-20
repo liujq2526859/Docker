@@ -1,0 +1,496 @@
+------
+
+文档来源
+
+[RUNOOB.COM](https://www.runoob.com/docker/docker-container-connection.html)
+
+# Docker 容器连接
+
+前面我们实现了通过网络端口来访问运行在 docker 容器内的服务。
+
+容器中可以运行一些网络应用，要让外部也可以访问这些应用，可以通过 **-P** 或 **-p** 参数来指定端口映射。
+
+下面我们来实现通过端口连接到一个 docker 容器。
+
+------
+
+## 网络端口映射
+
+我们创建了一个 python 应用的容器,默认访问地址为。
+
+```
+$ docker run -d -P training/webapp python app.py
+
+# 以下为实际运行结果
+root@ubuntu:/home/et# docker run -d -P training/webapp python app.py
+7ece8f41485ef4537bcfdfe25a181c7dd70f0dcec0aa716d8dfd26ad6028ef04
+```
+
+另外，我们可以指定容器绑定的网络地址，比如绑定 127.0.0.1。
+
+我们使用 **-P** 参数创建一个容器，使用 **docker ps** 可以看到容器端口 5000 绑定主机端口 32768。
+
+```
+# 以下为实际运行结果
+root@ubuntu:/home/et# docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS             
+7ece8f41485e        training/webapp     "python app.py"     6 minutes ago       Up 6 minutes    
+PORTS                     NAMES
+0.0.0.0:32769->5000/tcp   flamboyant_fermat
+```
+
+我们也可以使用 **-p** 标识来指定容器端口绑定到主机端口。
+
+两种方式的区别是:
+
+- **-P :**是容器内部端口**随机**映射到主机的高端口。
+- **-p :** 是容器内部端口绑定到**指定**的主机端口。
+
+```
+$ docker run -d -p 5000:5000 training/webapp python app.py
+
+# 以下为实际运行结果
+root@ubuntu:/home/et# docker run -d -p 5000:5000 training/webapp python app.py
+bd280d095d38dc2a4cb727eb9c9879e5ef981850fc9a2c283c299ebfbd934aab
+root@ubuntu:/home/et# docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS             
+bd280d095d38        training/webapp     "python app.py"     12 seconds ago      Up 6 seconds        
+7ece8f41485e        training/webapp     "python app.py"     10 minutes ago      Up 10 minutes       
+PORTS                     NAMES
+0.0.0.0:5000->5000/tcp    tender_chebyshev
+0.0.0.0:32769->5000/tcp   flamboyant_fermat
+```
+
+另外，我们可以指定容器绑定的网络地址，比如绑定 127.0.0.1:5001。
+
+```
+$ docker run -d -p 127.0.0.1:5001:5000 training/webapp python app.py
+
+# 以下为实际运行结果
+root@ubuntu:/home/et# docker run -d -p 127.0.0.1:5001:5000 training/webapp python app.py
+102341e664857e86ad123c87bcdbe995d064d3f4509aea5b155ad2eabc203605
+root@ubuntu:/home/et# docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              
+102341e66485        training/webapp     "python app.py"     3 minutes ago       Up 2 minutes       
+bd280d095d38        training/webapp     "python app.py"     6 minutes ago       Up 6 minutes        
+7ece8f41485e        training/webapp     "python app.py"     16 minutes ago      Up 16 minutes       
+PORTS                      NAMES
+127.0.0.1:5001->5000/tcp   funny_villani
+0.0.0.0:5000->5000/tcp     tender_chebyshev
+0.0.0.0:32769->5000/tcp    flamboyant_fermat
+```
+
+这样我们就可以通过访问 127.0.0.1:5001 来访问容器的 5000 端口。
+
+上面的例子中，默认都是绑定 tcp 端口，如果要绑定 UDP 端口，可以在端口后面加上 **/udp**。
+
+```
+$ docker run -d -p 127.0.0.1:5001:5000/udp training/webapp python app.py
+
+# 以下为实际运行结果
+root@ubuntu:/home/et# docker run -d -p 127.0.0.1:5001:5000/udp training/webapp python app.py
+73be0e0847551d92f468e3ae84f9b8e44dd485253f807b23808eddd23db4fe16
+root@ubuntu:/home/et# docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED              STATUS              
+73be0e084755        training/webapp     "python app.py"     About a minute ago   Up About a minute   
+102341e66485        training/webapp     "python app.py"     11 minutes ago       Up 11 minutes       
+bd280d095d38        training/webapp     "python app.py"     14 minutes ago       Up 14 minutes       
+7ece8f41485e        training/webapp     "python app.py"     25 minutes ago       Up 24 minutes       
+PORTS                                NAMES
+5000/tcp, 127.0.0.1:5001->5000/udp   modest_lovelace
+127.0.0.1:5001->5000/tcp             funny_villani
+0.0.0.0:5000->5000/tcp               tender_chebyshev
+0.0.0.0:32769->5000/tcp              flamboyant_fermat
+```
+
+**docker port** 命令可以让我们快捷地查看端口的绑定情况。
+
+```
+$ docker port NAMES 5000
+
+# 以下为实际运行结果
+root@ubuntu:/home/et# docker port modest_lovelace 5000
+Error: No public port '5000/tcp' published for modest_lovelace
+root@ubuntu:/home/et# docker port funny_villani 5000
+127.0.0.1:5001
+```
+
+------
+
+## Docker 容器互联
+
+端口映射并不是唯一把 docker 连接到另一个容器的方法。
+
+docker 有一个连接系统允许将多个容器连接在一起，共享连接信息。
+
+docker 连接会创建一个父子关系，其中父容器可以看到子容器的信息。
+
+------
+
+### 容器命名
+
+当我们创建一个容器的时候，docker 会自动对它进行命名。另外，我们也可以使用 **--name** 标识来命名容器，例如：
+
+```
+$ docker run -d -P --name runoob training/webapp python app.py
+
+# 以下为实际运行结果
+root@ubuntu:/home/et# docker run -d -P --name et_test2 training/webapp python app.py
+c4c6da47a07c26e8084d0480813e4a7db1a6094154d316d365bebf0176cd3577
+root@ubuntu:/home/et# docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS             
+c4c6da47a07c        training/webapp     "python app.py"     51 seconds ago      Up 50 seconds          73be0e084755        training/webapp     "python app.py"     46 hours ago        Up 30 minutes       
+PORTS                                NAMES
+0.0.0.0:32771->5000/tcp              et_test2
+5000/tcp, 127.0.0.1:5001->5000/udp   modest_lovelace
+```
+
+### 新建网络
+
+下面先创建一个新的 Docker 网络。
+
+```
+$ docker network create -d bridge test-net
+
+# 以下为实际运行结果
+root@ubuntu:/home/et# docker network create -d bridge test-net
+069d5a0dfafcfdebf5d7d02eb1edc82987ce5be86246913943140cb06579e02a
+```
+
+参数说明：
+
+**-d**：参数指定 Docker 网络类型，有 bridge、overlay。
+
+其中 overlay 网络类型用于 Swarm mode，在本小节中你可以忽略它。
+
+### 连接容器
+
+运行一个容器并连接到新建的 test-net 网络:
+
+```
+$ docker run -itd --name test1 --network test-net ubuntu /bin/bash
+
+# 以下为实际运行结果
+root@ubuntu:/home/et# docker run -itd --name test1 --network test-net ubuntu /bin/bash
+ab5192bdae67709262776c6772924a3a8750fdcd47312696dfac444c109795f9
+root@ubuntu:/home/et# docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              
+ab5192bdae67        ubuntu              "/bin/bash"         7 minutes ago       Up 7 minutes         
+c4c6da47a07c        training/webapp     "python app.py"     35 minutes ago      Up 35 minutes       
+73be0e084755        training/webapp     "python app.py"     46 hours ago        Up About an hour    
+PORTS                                NAMES
+                                     test1
+0.0.0.0:32771->5000/tcp              et_test2
+5000/tcp, 127.0.0.1:5001->5000/udp   modest_lovelace
+```
+
+打开新的终端，再运行一个容器并加入到 test-net 网络:
+
+```
+$ docker run -itd --name test2 --network test-net ubuntu /bin/bash
+
+# 以下为实际运行结果
+root@ubuntu:/home/et# docker run -itd --name test2 --network test-net ubuntu /bin/bash
+b6a904f4dc816e68035637df4e723aa766532f23ccc76cbe22b6e26ceda26d7d
+root@ubuntu:/home/et# docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              
+b6a904f4dc81        ubuntu              "/bin/bash"         8 seconds ago       Up 5 seconds         
+ab5192bdae67        ubuntu              "/bin/bash"         6 hours ago         Up 6 hours           
+c4c6da47a07c        training/webapp     "python app.py"     6 hours ago         Up 6 hours          
+73be0e084755        training/webapp     "python app.py"     2 days ago          Up 7 hours         
+PORTS                                NAMES
+                                     test2
+                                     test1
+0.0.0.0:32771->5000/tcp              et_test2
+5000/tcp, 127.0.0.1:5001->5000/udp   modest_lovelace
+```
+
+下面通过 ping 来证明 test1 容器和 test2 容器建立了互联关系。
+
+如果 test1、test2 容器内中无 ping 命令，则在容器内执行以下命令安装 ping（即学即用：可以在一个容器里安装好，提交容器到镜像，在以新的镜像重新运行以上俩个容器）。
+
+下面将分别采用三种方法分别测试容器的互联关系：（test1-test4）（test2-test5）（test3-test6）
+
+## 方法1
+
+```
+# 以下为实际运行结果
+# 1.更换阿里云为软件源
+root@ab5192bdae67:/# mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
+> echo 'deb http://mirrors.aliyun.com/ubuntu/ xenial main' > /etc/apt/sources.list && \
+> echo 'deb-src http://mirrors.aliyun.com/ubuntu/ xenial main' >> /etc/apt/sources.list && \
+> echo 'deb http://mirrors.aliyun.com/ubuntu/ xenial-updates main' >> /etc/apt/sources.list && \
+> echo 'deb-src http://mirrors.aliyun.com/ubuntu/ xenial-updates main' >> /etc/apt/sources.list && \
+> echo 'deb http://mirrors.aliyun.com/ubuntu/ xenial universe' >> /etc/apt/sources.list && \
+> echo 'deb-src http://mirrors.aliyun.com/ubuntu/ xenial universe' >> /etc/apt/sources.list && \
+> echo 'deb http://mirrors.aliyun.com/ubuntu/ xenial-updates universe' >> /etc/apt/sources.list && \
+> echo 'deb-src http://mirrors.aliyun.com/ubuntu/ xenial-updates universe' >> /etc/apt/sources.list && \
+> echo 'deb http://mirrors.aliyun.com/ubuntu/ xenial-security main' >> /etc/apt/sources.list && \
+> echo 'deb-src http://mirrors.aliyun.com/ubuntu/ xenial-security main' >> /etc/apt/sources.list && \
+> echo 'deb http://mirrors.aliyun.com/ubuntu/ xenial-security universe' >> /etc/apt/sources.list && \
+> echo 'deb-src http://mirrors.aliyun.com/ubuntu/ xenial-security universe' >> /etc/apt/sources.list
+
+# 2.更新并安装ifconfig ping命令
+root@ab5192bdae67:/# apt-get update
+...
+root@ab5192bdae67:/# apt-get install net-tools
+...
+root@ab5192bdae67:/# ifconfig
+eth0      Link encap:Ethernet  HWaddr 02:42:ac:12:00:02  
+          inet addr:172.18.0.2  Bcast:172.18.255.255  Mask:255.255.0.0
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+...
+root@ab5192bdae67:/# apt-get install iputils-ping
+Reading package lists... Done
+Building dependency tree       
+Reading state information... Done
+Some packages could not be installed. This may mean that you have
+requested an impossible situation or if you are using the unstable
+distribution that some required packages have not yet been created
+or been moved out of Incoming.
+The following information may help to resolve the situation:
+
+The following packages have unmet dependencies:
+ iputils-ping : Depends: libgnutls-openssl27 but it is not going to be installed
+E: Unable to correct problems, you have held broken packages.
+root@ab5192bdae67:/# apt-get install libgnutls-openssl27
+Reading package lists... Done
+Building dependency tree       
+Reading state information... Done
+Some packages could not be installed. This may mean that you have
+requested an impossible situation or if you are using the unstable
+distribution that some required packages have not yet been created
+or been moved out of Incoming.
+The following information may help to resolve the situation:
+
+The following packages have unmet dependencies:
+ libgnutls-openssl27 : Depends: libgnutls30 (= 3.4.10-4ubuntu1.7) but 3.6.13-2ubuntu1 is to be installed
+E: Unable to correct problems, you have held broken packages.
+# 出现依赖问题，换用aptitude解决依赖问题
+# 后发现aptitude也无法安装，于是安装inetutils-ping
+root@ab5192bdae67:/# apt-get install ping
+Reading package lists... Done
+Building dependency tree       
+Reading state information... Done
+Package ping is a virtual package provided by:
+  inetutils-ping 2:1.9.4-1build1
+  iputils-ping 3:20121221-5ubuntu2
+You should explicitly select one to install.
+root@ab5192bdae67:/# apt-get install inetutils-ping
+...
+root@ab5192bdae67:/# ping www.baidu.com 
+PING www.a.shifen.com (14.215.177.39): 56 data bytes
+64 bytes from 14.215.177.39: icmp_seq=0 ttl=127 time=18.458 ms
+root@ab5192bdae67:/# exit
+exit
+
+# 3.将配置好的容器提交到镜像
+root@ubuntu:/home/et# docker commit -m='has update' -a='docker-net-test1' ab5192bdae67 ping-test/aliyun:v1 
+sha256:0e2d8ae6a93cc44144abd27cdab698d5f430b2cd50b02cfbfd9e17b563c56126
+root@ubuntu:/home/et# docker images
+REPOSITORY            TAG                 IMAGE ID            CREATED             SIZE
+ping-test/aliyun      v1                  0e2d8ae6a93c        2 minutes ago       125MB
+...
+
+# 4.使用新镜像构建容器test4并使用test1 ping test4
+root@ubuntu:/home/et# docker run -itd --name test4 --network test-net ping-test/aliyun:v1 /bin/bash
+f4f273897084287aef3fe064c21e23f9dd3554595f964669d895621a21e77981
+root@ubuntu:/home/et# docker start ab5192bdae67
+ab5192bdae67
+root@ubuntu:/home/et# docker attach ab5192bdae67
+root@ab5192bdae67:/# ping test4
+PING test4 (172.18.0.4): 56 data bytes
+64 bytes from 172.18.0.4: icmp_seq=0 ttl=64 time=0.179 ms
+64 bytes from 172.18.0.4: icmp_seq=1 ttl=64 time=0.062 ms
+...
+
+# 5.停止容器test1
+root@ab5192bdae67:/# exit
+exit
+```
+
+------
+
+## 方法2
+
+```
+# 以下为实际运行结果
+# 1.更换ustc源
+
+root@ubuntu:/home/et# docker attach test2
+root@b6a904f4dc81:/etc/apt# cp /etc/apt/sources.list /etc/apt/sources.list.bk
+root@b6a904f4dc81:/etc/apt# sed -i 's/archive.ubuntu.com/mirrors.ustc.edu.cn/g' /etc/apt/sources.list
+
+# 2.更新并安装ifconfig ping命令
+
+root@b6a904f4dc81:/etc/apt# apt-get update  
+...
+root@b6a904f4dc81:/etc/apt# apt-get install net-tools
+...
+root@b6a904f4dc81:/etc/apt# ifconfig
+eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 172.18.0.3  netmask 255.255.0.0  broadcast 172.18.255.255
+...
+
+# ustc源安装iputils-ping并未出现任何问题,aptitude也成功安装
+
+root@b6a904f4dc81:/etc/apt# apt-get install iputils-ping
+...
+
+# 3.将配置好的容器提交到镜像
+
+root@ubuntu:/home/et# docker commit -m='has update' -a='docker-net-test2' b6a904f4dc81 ping-test/ustc:v1
+sha256:1b430583ef818838345cc41ccc76ffa388e5a296a79c067ce44c35de6501c698
+root@ubuntu:/home/et# docker images
+REPOSITORY            TAG                 IMAGE ID            CREATED             SIZE
+ping-test/ustc        v1                  1b430583ef81        56 seconds ago      97.7MB
+ping-test/aliyun      v1                  0e2d8ae6a93c        4 hours ago         125MB
+...
+
+# 4.使用新镜像构建容器test5并使用test2 ping test4 & test5
+
+root@ubuntu:/home/et# docker run -itd --name test5 --network test-net ping-test/ustc:v1 /bin/bash622f1a191e74b64b626d13038400c17aed0185cc3e53509c9d06195588daf2d3
+root@ubuntu:/home/et# docker start test2
+test2
+root@ubuntu:/home/et# docker attach test2
+root@b6a904f4dc81:/# ping test4
+PING test4 (172.18.0.4) 56(84) bytes of data.
+64 bytes from test4.test-net (172.18.0.4): icmp_seq=1 ttl=64 time=0.113 ms
+64 bytes from test4.test-net (172.18.0.4): icmp_seq=2 ttl=64 time=0.056 ms
+root@b6a904f4dc81:/# ping test5
+PING test5 (172.18.0.3) 56(84) bytes of data.
+64 bytes from test5.test-net (172.18.0.3): icmp_seq=1 ttl=64 time=0.065 ms
+64 bytes from test5.test-net (172.18.0.3): icmp_seq=2 ttl=64 time=0.084 ms
+
+# 5.停止容器test2
+
+root@b6a904f4dc81:/# exit
+exit
+```
+
+
+
+------
+
+## 方法3
+
+```
+# 以下为实际运行结果
+
+# 1.为Ubuntu16.04配置clash
+
+
+# 1.给已经建立的容器test3挂代理
+
+# 2.更新并安装ifconfig ping命令
+
+# 3.将配置好的容器提交到镜像
+
+# 4.使用新镜像构建容器test6并使用test3 ping test4 & test5 & test6
+
+# 5.停止容器test3
+```
+
+能ping通，则代表test1 和 test4 （ test2 和 test5 、test3 和 test6 ）建立了互联关系，下文均采用test1。
+
+如果你有多个容器之间需要互相连接，推荐使用 Docker Compose，后面会介绍。
+
+------
+
+## 配置 DNS
+
+我们可以在宿主机的 /etc/docker/daemon.json 文件中增加以下内容来设置全部容器的 DNS：
+
+```
+$ vim /etc/docker/daemon.json
+# 添加dns
+{
+  "registry-mirrors": ["https://xxxx.aliyuncs.com"],
+  "dns": ["114.114.114.114","8.8.8.8"]
+}
+```
+
+设置后，启动容器的 DNS 会自动配置为 114.114.114.114 和 8.8.8.8。
+
+配置完，需要重启 docker 才能生效。
+
+**systemctl 方式**
+
+```
+# 启动        
+$ systemctl start docker
+# 守护进程重启
+$ sudo systemctl daemon-reload
+# 重启docker服务
+$ sudo systemctl restart docker
+# 关闭docker
+$ sudo systemctl stop docker
+```
+
+**service 方式**
+
+```
+# 启动        
+$ sudo service docker start
+# 重启docker服务  
+$ sudo service docker restart
+# 关闭
+$ sudo service docker stop
+```
+
+查看容器的 DNS 是否生效可以使用以下命令，它会输出容器的 DNS 信息：
+
+```
+# --rm Automatically remove the container when it exits
+$ docker run -it --rm ubuntu cat etc/resolv.conf
+
+# 以下为实际运行结果
+# 重启前
+root@ubuntu:/home/et# docker run -it --rm ubuntu cat /etc/resolv.conf 
+# Dynamic resolv.conf(5) file for glibc resolver(3) generated by resolvconf(8)
+#     DO NOT EDIT THIS FILE BY HAND -- YOUR CHANGES WILL BE OVERWRITTEN
+search localdomain
+
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+
+# 重启后
+root@ubuntu:/home/et# docker run -it --rm ubuntu cat etc/resolv.conf
+search localdomain
+nameserver 114.114.114.114
+nameserver 8.8.8.8
+```
+
+**手动指定容器的配置**
+
+如果只想在指定的容器设置 DNS，则可以使用以下命令：
+
+```
+$ docker run -it --rm -h host_ubuntu --dns=114.114.114.114 --dns-search=test.com ubuntu
+
+# 以下为实际运行结果
+root@ubuntu:/home/et# docker run -it --rm -h host_ubuntu --dns=114.114.114.114 --dns-search=test.com ubuntu
+root@host_ubuntu:/# cat /etc/hostname 
+host_ubuntu
+root@host_ubuntu:/# cat /etc/hosts 
+127.0.0.1	localhost
+::1	localhost ip6-localhost ip6-loopback
+fe00::0	ip6-localnet
+ff00::0	ip6-mcastprefix
+ff02::1	ip6-allnodes
+ff02::2	ip6-allrouters
+172.17.0.2	host_ubuntu
+root@host_ubuntu:/# cat /etc/resolv.conf 
+search test.com
+nameserver 114.114.114.114
+```
+
+参数说明：
+
+**-h HOSTNAME 或者 --hostname=HOSTNAME**： 设定容器的主机名，它会被写到容器内的 /etc/hostname 和 /etc/hosts。
+
+**--dns=IP_ADDRESS**： 添加 DNS 服务器到容器的 /etc/resolv.conf 中，让容器用这个服务器来解析所有不在 /etc/hosts 中的主机名。
+
+**--dns-search=DOMAIN**： 设定容器的搜索域，当设定搜索域为 .example.com 时，在搜索一个名为 host 的主机时，DNS 不仅搜索 host，还会搜索 host.example.com。
+
+如果在容器启动时没有指定 **--dns** 和 **--dns-search**，Docker 会默认用宿主主机上的 /etc/resolv.conf 来配置容器的 DNS。
